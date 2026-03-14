@@ -1,4 +1,3 @@
-const { jsPDF } = require("jspdf");
 const { Document, Packer, Paragraph, TextRun } = require("docx");
 const fs = require('fs');
 const path = require('path');
@@ -48,12 +47,25 @@ async function generateFile(text, format, originalName, targetLanguage = 'Englis
                 doc.moveDown(2);
 
                 // Content
-                doc.fontSize(11).fillColor('#1f2937').text(text, {
-                    align: 'justify',
-                    lineGap: 5,
-                    paragraphGap: 10,
-                    features: { kern: false } // Disable kerning to fix xCoordinate crash with Noto fonts
-                });
+                try {
+                    doc.fontSize(11).fillColor('#1f2937').text(text, {
+                        align: 'justify',
+                        lineGap: 5,
+                        paragraphGap: 10,
+                        features: [] // Disable all OpenType features to prevent xCoordinate crash
+                    });
+                } catch (renderError) {
+                    console.error('PDF rendering error with custom font, falling back to Helvetica:', renderError);
+                    try {
+                        // Fallback: try rendering with Helvetica (will show squares for non-Latin, but won't crash)
+                        doc.font('Helvetica');
+                        doc.fontSize(11).fillColor('#1f2937').text(text);
+                    } catch (fallbackError) {
+                        console.error('Final PDF rendering fallback failed:', fallbackError);
+                        // If everything fails, at least provide a message
+                        doc.text('Error rendering document content. Please try a different format.');
+                    }
+                }
 
                 doc.end();
                 writeStream.on('finish', () => resolve({ fileName, filePath }));
@@ -78,29 +90,37 @@ async function generateFile(text, format, originalName, targetLanguage = 'Englis
             });
         });
 
-        const doc = new Document({
-            sections: [{
-                properties: {},
-                children: [
-                    new Paragraph({
-                        children: [
-                            new TextRun({
-                                text: "Translated Document",
-                                bold: true,
-                                size: 36, // 18pt
-                                color: "4f46e5",
-                                font: "Roboto"
-                            }),
-                        ],
-                        alignment: "center",
-                        spacing: { after: 400 }
-                    }),
-                    ...paragraphs
-                ],
-            }],
-        });
-        const buffer = await Packer.toBuffer(doc);
-        fs.writeFileSync(filePath, buffer);
+        try {
+            const doc = new Document({
+                sections: [{
+                    properties: {},
+                    children: [
+                        new Paragraph({
+                            children: [
+                                new TextRun({
+                                    text: "Translated Document",
+                                    bold: true,
+                                    size: 36, // 18pt
+                                    color: "4f46e5",
+                                    font: "Roboto"
+                                }),
+                            ],
+                            alignment: "center",
+                            spacing: { after: 400 }
+                        }),
+                        ...paragraphs
+                    ],
+                }],
+            });
+            const buffer = await Packer.toBuffer(doc);
+            fs.writeFileSync(filePath, buffer);
+        } catch (docxError) {
+            console.error('DOCX generation error:', docxError);
+            // Fallback to simple text file if DOCX fails
+            const txtPath = filePath.replace('.docx', '.txt');
+            fs.writeFileSync(txtPath, text);
+            return { fileName: path.basename(txtPath), filePath: txtPath };
+        }
     } else {
         throw new Error('Unsupported output format: ' + format);
     }
