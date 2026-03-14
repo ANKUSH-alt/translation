@@ -40,7 +40,7 @@ const languages = [
 
 const outputFormats = ['docx', 'pdf', 'txt'];
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5001";
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "";
 
 export default function Home() {
   const [file, setFile] = useState<File | null>(null);

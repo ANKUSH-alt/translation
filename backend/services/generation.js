@@ -5,7 +5,9 @@ const path = require('path');
 
 async function generateFile(text, format, originalName, targetLanguage = 'English') {
     const fileName = `translated_${Date.now()}_${path.parse(originalName).name}.${format}`;
-    const filePath = path.join(__dirname, '../uploads', fileName);
+    const UPLOADS_DIR = process.env.NODE_ENV === 'production' ? '/tmp' : path.join(__dirname, '../uploads');
+    const filePath = path.join(UPLOADS_DIR, fileName);
+
 
     const getFontPath = (lang) => {
         const lowerLang = lang?.toLowerCase() || '';

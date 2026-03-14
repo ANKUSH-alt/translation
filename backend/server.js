@@ -14,10 +14,13 @@ const port = process.env.PORT || 5001;
 app.use(cors());
 app.use(express.json());
 
+// Use /tmp for Vercel serverless environment
+const UPLOADS_DIR = process.env.NODE_ENV === 'production' ? '/tmp' : 'uploads/';
+
 // Setup Multer for file uploads
 const storage = multer.diskStorage({
     destination: (req, file, cb) => {
-        cb(null, 'uploads/');
+        cb(null, UPLOADS_DIR);
     },
     filename: (req, file, cb) => {
         cb(null, Date.now() + '-' + file.originalname);
@@ -53,7 +56,9 @@ app.post('/api/translate', upload.single('file'), async (req, res) => {
         const { fileName, filePath: finalPath } = await generateFile(translatedText, outputFormat || 'txt', req.file.originalname, targetLanguage);
 
         // Clean up uploaded file
-        fs.unlinkSync(filePath);
+        if (fs.existsSync(filePath)) {
+            fs.unlinkSync(filePath);
+        }
 
         res.json({
             message: 'Translation successful',
@@ -70,7 +75,8 @@ app.post('/api/translate', upload.single('file'), async (req, res) => {
 
 app.get('/api/download/:filename', (req, res) => {
     const fileName = req.params.filename;
-    const filePath = path.join(__dirname, 'uploads', fileName);
+    const filePath = path.join(UPLOADS_DIR, fileName);
+
 
     if (fs.existsSync(filePath)) {
         res.download(filePath, (err) => {
