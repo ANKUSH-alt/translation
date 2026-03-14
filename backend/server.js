@@ -97,3 +97,6 @@ const server = app.listen(port, () => {
 
 // Set server timeout to 10 minutes (600,000 ms)
 server.timeout = 600000;
+
+module.exports = app;
+
