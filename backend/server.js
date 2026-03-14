@@ -91,8 +91,13 @@ app.get('/api/download/:filename', (req, res) => {
     }
 });
 
-// Only start the server if not running in Vercel (production)
-if (process.env.NODE_ENV !== 'production') {
+// Only start the server if not running in Vercel (production) or if running on Render
+if (process.env.NODE_ENV !== 'production' || process.env.RENDER) {
+    // Ensure uploads directory exists if not using /tmp
+    if (UPLOADS_DIR !== '/tmp' && !fs.existsSync(UPLOADS_DIR)) {
+        fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+    }
+
     const server = app.listen(port, () => {
         console.log(`Backend server running on port ${port}`);
     });
