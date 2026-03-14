@@ -91,12 +91,15 @@ app.get('/api/download/:filename', (req, res) => {
     }
 });
 
-const server = app.listen(port, () => {
-    console.log(`Backend server running on port ${port}`);
-});
-
-// Set server timeout to 10 minutes (600,000 ms)
-server.timeout = 600000;
+// Only start the server if not running in Vercel (production)
+if (process.env.NODE_ENV !== 'production') {
+    const server = app.listen(port, () => {
+        console.log(`Backend server running on port ${port}`);
+    });
+    // Set server timeout to 10 minutes (600,000 ms)
+    server.timeout = 600000;
+}
 
 module.exports = app;
+
 
