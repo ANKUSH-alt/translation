@@ -1,0 +1,22 @@
+# LingoShift System Requirements
+
+This project requires certain system-level dependencies for document processing and OCR:
+
+### ⚙️ System Dependencies
+- nodejs >= 18.0.0
+- poppler-utils (required for 'pdftoppm' to process PDF OCR)
+- tesseract-ocr (recommended for faster image processing)
+
+### 🔑 Environment Keys
+- GROQ_API_KEY (Backend)
+- NEXT_PUBLIC_API_URL (Frontend)
+
+### 📦 Node.js Packages (Core)
+- express
+- pdf-parse
+- mammoth
+- tesseract.js
+- pdfkit
+- docx
+- @google/generative-ai
+- openai
