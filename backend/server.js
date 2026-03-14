@@ -11,8 +11,17 @@ require('dotenv').config();
 const app = express();
 const port = process.env.PORT || 5001;
 
-app.use(cors());
+app.use(cors({
+    origin: '*',
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization']
+}));
 app.use(express.json());
+
+// Health check for Render
+app.get('/api/health', (req, res) => {
+    res.json({ status: 'ok', environment: process.env.NODE_ENV });
+});
 
 // Use /tmp for Vercel serverless environment
 const UPLOADS_DIR = process.env.NODE_ENV === 'production' ? '/tmp' : 'uploads/';

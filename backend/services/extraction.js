@@ -56,11 +56,16 @@ async function ocrPdfPages(pdfPath) {
     fs.mkdirSync(tmpDir, { recursive: true });
 
     try {
-        // Convert PDF pages to PNG images using pdftoppm
+        // Convert PDF pages to images using pdftoppm
         const outputPrefix = path.join(tmpDir, 'page');
-        execSync(`pdftoppm -png -r 300 "${pdfPath}" "${outputPrefix}"`, {
-            timeout: 300000 // 300 second timeout (5 minutes)
-        });
+        try {
+            execSync(`pdftoppm -png -r 300 "${pdfPath}" "${outputPrefix}"`, {
+                timeout: 300000 // 300 second timeout (5 minutes)
+            });
+        } catch (execError) {
+            console.error('pdftoppm failed. It might not be installed on the server:', execError.message);
+            throw new Error('PDF OCR failed: System dependency "poppler-utils" (pdftoppm) is missing on the server. Please use a Docker-based deployment or a different environment.');
+        }
 
         // Get all generated page images
         const pageFiles = fs.readdirSync(tmpDir)

@@ -40,7 +40,14 @@ const languages = [
 
 const outputFormats = ['docx', 'pdf', 'txt'];
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || (typeof window !== 'undefined' && window.location.hostname === 'localhost' ? "http://localhost:5001" : "");
+const RENDER_BACKEND_URL = "https://language-translator-backend-vu13.onrender.com";
+
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 
+  (typeof window !== 'undefined' && window.location.hostname === 'localhost' ? "http://localhost:5001" : RENDER_BACKEND_URL);
+
+if (typeof window !== 'undefined') {
+  console.log("LingoShift: Using API Base URL:", API_BASE_URL);
+}
 
 export default function Home() {
   const [file, setFile] = useState<File | null>(null);
