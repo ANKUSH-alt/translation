@@ -4,12 +4,13 @@ A full-stack web application that translates PDF, DOCX, TXT, and Images into 100
 
 ## Tech Stack
 - **Frontend**: Next.js, Tailwind CSS, Framer Motion, Lucide React
-- **Backend**: Node.js, Express, Multer, PDF-Parse, Mammoth, Tesseract.js, OpenAI SDK
-- **File Generation**: jsPDF, docx
+- **Backend**: Node.js, Express, Multer, PDF-Parse, Mammoth, Tesseract.js, OpenAI SDK (Groq Provider)
+- **AI Model**: **Llama 3.1 8B Instant** (Primary) with Automatic Fallbacks
+- **File Generation**: PDFKit (optimized), docx
 
 ## Prerequisites
 - Node.js (v18 or higher)
-- OpenAI API Key
+- Groq API Key (added to `backend/.env`)
 
 ## Setup Instructions
 
