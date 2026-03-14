@@ -40,6 +40,8 @@ const languages = [
 
 const outputFormats = ['docx', 'pdf', 'txt'];
 
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5001";
+
 export default function Home() {
   const [file, setFile] = useState<File | null>(null);
   const [targetLang, setTargetLang] = useState("Spanish");
@@ -80,7 +82,7 @@ export default function Home() {
       setTimeout(() => setProgress(45), 1000);
       setTimeout(() => setProgress(75), 3000);
 
-      const response = await fetch("http://localhost:5001/api/translate", {
+      const response = await fetch(`${API_BASE_URL}/api/translate`, {
         method: "POST",
         body: formData,
       });
@@ -93,7 +95,7 @@ export default function Home() {
       const data = await response.json();
       setResult({
         fileName: data.fileName,
-        downloadUrl: `http://localhost:5001${data.downloadUrl}`
+        downloadUrl: `${API_BASE_URL}${data.downloadUrl}`
       });
       setPreviewText(data.translatedText);
       setStatus("success");

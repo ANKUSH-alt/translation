@@ -1,0 +1,7 @@
+backend/
+node_modules/
+.git/
+.env
+uploads/
+brain/
+.gemini/
