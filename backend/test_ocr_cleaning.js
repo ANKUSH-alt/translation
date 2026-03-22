@@ -22,10 +22,10 @@ const testCases = [
         expectedNotContains: ['CISCO went', 'the the', 'items items']
     },
     {
-        name: 'Spanish OCR errors',
+        name: 'Spanish OCR errors (Historical Preservation Default)',
         input: 'El zel0so defensor de la devocion sagrada.',
         language: 'spa',
-        expectedContains: ['celoso', 'devoción']
+        expectedContains: ['zeloso', 'devoción']
     },
     {
         name: 'Already correct text',
@@ -48,16 +48,20 @@ const testCases = [
         expectedContains: ['went', 'the', 'because', 'needed', 'some']
     },
     {
-        name: 'Historical Spanish: Dictionary corrections',
-        input: 'El zeloso defensor de la fe hizo hazer una gran plaça.',
+        name: 'Historical Spanish: Preservation mode',
+        input: 'El zel0so defensor de la fe hizo haz0r una gran plaç4.',
         language: 'spa',
-        expectedContains: ['celoso', 'hacer', 'plaza']
+        expectedContains: ['zeloso', 'hazer', 'plaça']
     },
     {
-        name: 'Historical Spanish: Typography & Archaic',
-        input: 'En aquel tiempo dixo el ſeñor a ſus diſcipulos.',
-        language: 'spa',
-        expectedContains: ['dijo', 'señor', 'sus', 'discipulos']
+        name: 'Semantic correction: Word in context',
+        input: 'The car sat on the mat and purred loudly.',
+        expectedContains: ['cat sat on the mat']
+    },
+    {
+        name: 'Grammatical correctness: Agreement',
+        input: 'The students goes to the library every day.',
+        expectedContains: ['students go to the library']
     }
 ];
 

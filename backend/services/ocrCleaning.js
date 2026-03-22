@@ -20,10 +20,12 @@ const FALLBACK_MODELS = [
 const MAX_CHUNK_SIZE = 2500; // characters per chunk
 const CHUNK_OVERLAP = 200;   // overlap to preserve context at boundaries
 
-// ─── PASS 1 PROMPT: Character-Level OCR Fixes ───────────────────────────
-const PASS1_SYSTEM_PROMPT = `You are a MINIMAL, CONSERVATIVE OCR post-correction system.
+// ─── PASS 1 PROMPT: Character-Level & Semantic OCR Fixes ────────────────
+const PASS1_SYSTEM_PROMPT = `You are a HIGH-PRECISION OCR post-correction system.
 
-YOUR ONLY TASK: Fix OBVIOUS spelling mistakes caused by OCR misreading. Nothing else.
+YOUR TASK: 
+1. Fix OBVIOUS character misreads (0→o, 1→l, etc.) that produce non-words.
+2. SEMANTIC CORRECTION: Identify real words that are clearly incorrect in context (e.g., "The car sat on the mat" -> "The cat sat on the mat"). Only change these if the semantic error is obvious.
 
 You must be EXTREMELY CONSERVATIVE. Only correct a word if you are 100% certain it is an OCR error.
 
@@ -48,11 +50,24 @@ EXAMPLES OF OVER-CORRECTION (DO NOT DO THIS):
 • "their" → "there" ✗ (both are real words — DO NOT change)
 • "lead" → "led" ✗ (both are real words — DO NOT change)
 
-THE GOLDEN RULE: If a word exists in the dictionary, DO NOT change it.
-If the text is already correct, return it EXACTLY as-is.
-When in doubt, DO NOT correct.
+THE GOLDEN RULE: Only change a real word if it is SEMANTICALLY IMPOSSIBLE in the given context.
+For historical documents, PREFER historically accurate spellings (e.g., "zeloso", "hazer", "dixo") over modern ones.
 
 Return ONLY the corrected text. No explanations.`;
+
+// ─── PASS 4 PROMPT: Grammatical Correctness ───────────────────────────
+const PASS4_SYSTEM_PROMPT = `You are a professional grammar and linguistic editor.
+
+YOUR TASK: Ensure the text is grammatically correct while strictly adhering to the original meaning and style.
+1. Fix punctuation and minor grammatical agreement issues.
+2. Ensure consistent verb tenses and agreement.
+3. DO NOT paraphrase or rewrite the text.
+4. FOR HISTORICAL DOCUMENTS: 
+   - STRICTLY PRESERVE archaic spellings (e.g., "zeloso", "hazer", "plaça", "dixo"). 
+   - Do NOT modernize these to modern equivalents. 
+   - Only fix clear grammatical errors that are not part of the period's style.
+
+Return ONLY the grammatically correct text. No explanations.`;
 
 // ─── PASS 2 PROMPT: Minimal Structural Cleanup ──────────────────────────
 const PASS2_SYSTEM_PROMPT = `You are a MINIMAL OCR structural cleanup system.
@@ -282,13 +297,19 @@ async function cleanOcrText(text, sourceLanguage = 'eng') {
     let finalText = reassembleChunks(pass2Results, pass2Chunks);
     console.log(`  ✓ Pass 2 complete (${finalText.length} chars)\n`);
 
-    // ─── PASS 3: Archaic Normalization (Historical Docs Only) ────────────
-    if (profileKey === 'historical-spanish') {
-        console.log('── Pass 3: Archaic Normalization ──');
-        const pass3Prompt = `You are a specialist in historical Spanish. 
-        Normalize archaic spellings to modern Spanish equivalents (e.g., x → j in "dixo", z → c in "zeloso") 
-        while STRICTLY preserving the meaning and formal tone of the document.
-        Return ONLY corrected text.`;
+    // ─── PASS 3: Archaic/Historical Handling ───────────────────────────
+    if (profileKey.startsWith('historical')) {
+        const isPreserve = profile.postProcessing.preserveArchaic;
+        console.log(`── Pass 3: Historical ${isPreserve ? 'Preservation' : 'Normalization'} ──`);
+        
+        const pass3Prompt = isPreserve
+            ? `You are a specialist in historical text preservation. 
+               Fix ONLY clear OCR character errors (e.g., "zel0so" -> "zeloso").
+               STRICTLY PRESERVE historically accurate spellings like "zeloso", "hazer", "dixo", "plaça". 
+               Do NOT modernize these words. Return ONLY corrected text.`
+            : `You are a specialist in historical Spanish normalization. 
+               Normalize archaic spellings to modern equivalents (e.g., "zeloso" -> "celoso", "hazer" -> "hacer")
+               while preserving formal tone. Return ONLY corrected text.`;
         
         const pass3Chunks = chunkText(finalText);
         const pass3Results = [];
@@ -299,6 +320,18 @@ async function cleanOcrText(text, sourceLanguage = 'eng') {
         finalText = reassembleChunks(pass3Results, pass3Chunks);
         console.log(`  ✓ Pass 3 complete (${finalText.length} chars)\n`);
     }
+
+    // ─── PASS 4: Grammatical Correctness ───────────────────────────────
+    console.log('── Pass 4: Grammatical Correctness ──');
+    const pass4Chunks = chunkText(finalText);
+    const pass4Results = [];
+    for (let i = 0; i < pass4Chunks.length; i++) {
+        console.log(`  Chunk ${i + 1}/${pass4Chunks.length} (${pass4Chunks[i].length} chars)...`);
+        const cleaned = await runCleaningPass(pass4Chunks[i], PASS4_SYSTEM_PROMPT, 0.1, sourceLanguage, profile.name);
+        pass4Results.push(cleaned);
+    }
+    finalText = reassembleChunks(pass4Results, pass4Chunks);
+    console.log(`  ✓ Pass 4 complete (${finalText.length} chars)\n`);
 
     console.log(`══ OCR Cleanup Done: ${text.length} → ${finalText.length} chars ══\n`);
 
