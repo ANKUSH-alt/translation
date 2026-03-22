@@ -1,4 +1,5 @@
 const { OpenAI } = require('openai');
+const { applyDictionary, applyTypographyFixes, detectDocumentType, getProfile } = require('./dictionary');
 
 let openaiClient = null;
 if (process.env.GROQ_API_KEY) {
@@ -162,17 +163,19 @@ function reassembleChunks(processedChunks, originalChunks) {
 /**
  * Run a single AI cleaning pass
  */
-async function runCleaningPass(text, systemPrompt, temperature, sourceLanguage) {
+async function runCleaningPass(text, systemPrompt, temperature, sourceLanguage, profileName = 'modern') {
     if (!openaiClient) {
         console.warn('Groq API key missing. Skipping OCR cleanup pass.');
         return text;
     }
 
     const langHint = sourceLanguage && sourceLanguage !== 'eng'
-        ? `\nNote: The source text language is "${sourceLanguage}". Apply corrections appropriate for this language.`
+        ? `\nNote: The source text language is "${sourceLanguage}".`
         : '';
+    
+    const profileHint = `\nDocument Type Context: ${profileName}.`;
 
-    const userPrompt = `${langHint}\n\nText:\n${text}`;
+    const userPrompt = `${langHint}${profileHint}\n\nText:\n${text}`;
 
     let lastError = null;
 
@@ -220,7 +223,7 @@ async function runCleaningPass(text, systemPrompt, temperature, sourceLanguage) 
 }
 
 /**
- * Main OCR text cleaning function — multi-pass with chunking
+ * Main OCR text cleaning function — multi-pass with chunking, dictionary, and document profiles
  * @param {string} text - Raw OCR text
  * @param {string} sourceLanguage - OCR language code (e.g., 'eng', 'spa', 'hin')
  * @returns {string} Cleaned text
@@ -232,13 +235,26 @@ async function cleanOcrText(text, sourceLanguage = 'eng') {
         return text;
     }
 
+    // ─── 0. Document Type Detection & Profiling ──────────────────────────
+    const profileKey = detectDocumentType(text, sourceLanguage);
+    const profile = getProfile(profileKey);
+
     console.log(`\n╔══ OCR Post-Correction Pipeline ══╗`);
     console.log(`║ Input length: ${text.length} chars`);
     console.log(`║ Source language: ${sourceLanguage}`);
+    console.log(`║ Document Type: ${profile.name}`);
 
-    // ─── Chunk the text if needed ────────────────────────────────────────
-    const chunks = chunkText(text);
-    console.log(`║ Chunks: ${chunks.length}`);
+    // ─── 1. Deterministic Layer: Dictionary & Typography ─────────────────
+    console.log('── Step 1: Deterministic Processing ──');
+    let processedText = applyTypographyFixes(text, profile);
+    if (profile.useDictionary) {
+        processedText = applyDictionary(processedText, profile.dictionaryName);
+    }
+    console.log(`  ✓ Deterministic layer complete\n`);
+
+    // ─── 2. Chunking ───────────────────────────────────────────────────
+    const chunks = chunkText(processedText);
+    console.log(`║ Processing in ${chunks.length} chunk(s)`);
     console.log(`╚══════════════════════════════════╝\n`);
 
     // ─── PASS 1: Character-level OCR fixes ───────────────────────────────
@@ -246,7 +262,7 @@ async function cleanOcrText(text, sourceLanguage = 'eng') {
     const pass1Results = [];
     for (let i = 0; i < chunks.length; i++) {
         console.log(`  Chunk ${i + 1}/${chunks.length} (${chunks[i].length} chars)...`);
-        const cleaned = await runCleaningPass(chunks[i], PASS1_SYSTEM_PROMPT, 0.0, sourceLanguage);
+        const cleaned = await runCleaningPass(chunks[i], PASS1_SYSTEM_PROMPT, 0.0, sourceLanguage, profile.name);
         pass1Results.push(cleaned);
     }
 
@@ -259,12 +275,30 @@ async function cleanOcrText(text, sourceLanguage = 'eng') {
     const pass2Results = [];
     for (let i = 0; i < pass2Chunks.length; i++) {
         console.log(`  Chunk ${i + 1}/${pass2Chunks.length} (${pass2Chunks[i].length} chars)...`);
-        const cleaned = await runCleaningPass(pass2Chunks[i], PASS2_SYSTEM_PROMPT, 0.1, sourceLanguage);
+        const cleaned = await runCleaningPass(pass2Chunks[i], PASS2_SYSTEM_PROMPT, 0.1, sourceLanguage, profile.name);
         pass2Results.push(cleaned);
     }
 
-    const finalText = reassembleChunks(pass2Results, pass2Chunks);
+    let finalText = reassembleChunks(pass2Results, pass2Chunks);
     console.log(`  ✓ Pass 2 complete (${finalText.length} chars)\n`);
+
+    // ─── PASS 3: Archaic Normalization (Historical Docs Only) ────────────
+    if (profileKey === 'historical-spanish') {
+        console.log('── Pass 3: Archaic Normalization ──');
+        const pass3Prompt = `You are a specialist in historical Spanish. 
+        Normalize archaic spellings to modern Spanish equivalents (e.g., x → j in "dixo", z → c in "zeloso") 
+        while STRICTLY preserving the meaning and formal tone of the document.
+        Return ONLY corrected text.`;
+        
+        const pass3Chunks = chunkText(finalText);
+        const pass3Results = [];
+        for (let i = 0; i < pass3Chunks.length; i++) {
+            const cleaned = await runCleaningPass(pass3Chunks[i], pass3Prompt, 0.1, sourceLanguage, profile.name);
+            pass3Results.push(cleaned);
+        }
+        finalText = reassembleChunks(pass3Results, pass3Chunks);
+        console.log(`  ✓ Pass 3 complete (${finalText.length} chars)\n`);
+    }
 
     console.log(`══ OCR Cleanup Done: ${text.length} → ${finalText.length} chars ══\n`);
 

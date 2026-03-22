@@ -46,6 +46,18 @@ const testCases = [
         name: 'Handwriting: split words from gaps',
         input: 'I we nt to th e store bec ause I nee ded so me milk.',
         expectedContains: ['went', 'the', 'because', 'needed', 'some']
+    },
+    {
+        name: 'Historical Spanish: Dictionary corrections',
+        input: 'El zeloso defensor de la fe hizo hazer una gran plaça.',
+        language: 'spa',
+        expectedContains: ['celoso', 'hacer', 'plaza']
+    },
+    {
+        name: 'Historical Spanish: Typography & Archaic',
+        input: 'En aquel tiempo dixo el ſeñor a ſus diſcipulos.',
+        language: 'spa',
+        expectedContains: ['dijo', 'señor', 'sus', 'discipulos']
     }
 ];
 
