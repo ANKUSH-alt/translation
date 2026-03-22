@@ -1,12 +1,62 @@
 const pdfParse = require('pdf-parse');
 const mammoth = require('mammoth');
-const Tesseract = require('tesseract.js');
+const { createWorker } = require('tesseract.js');
 const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
+const sharp = require('sharp');
 
-async function extractText(filePath, mimeType) {
-    // PDF extraction using pdf-parse (server-safe)
+async function preprocessImage(filePath) {
+    const ext = path.extname(filePath);
+    const preprocessedPath = filePath.replace(ext, `_preprocessed${ext}`);
+    
+    // Grayscale, normalize (threshold-like contrast stretch), and median filter for noise removal
+    await sharp(filePath)
+        .grayscale()
+        .normalize()
+        .median(3) // Noise reduction
+        .toFile(preprocessedPath);
+        
+    return preprocessedPath;
+}
+
+async function createHighlightedImage(filePath, words) {
+    const ext = path.extname(filePath);
+    const highlightedPath = filePath.replace(ext, `_highlighted${ext}`);
+    
+    // Get image dimensions to setup SVG canvas
+    const metadata = await sharp(filePath).metadata();
+    
+    // Create SVG overlays for bounding boxes
+    // Tesseract words have bbox: { x0, y0, x1, y1 }
+    let svgRects = '';
+    for (const word of words) {
+        if (!word.bbox) continue;
+        const { x0, y0, x1, y1 } = word.bbox;
+        const width = x1 - x0;
+        const height = y1 - y0;
+        svgRects += `<rect x="${x0}" y="${y0}" width="${width}" height="${height}" fill="none" stroke="red" stroke-width="2" />`;
+    }
+    
+    const svgOverlay = `
+    <svg width="${metadata.width}" height="${metadata.height}">
+        ${svgRects}
+    </svg>`;
+    
+    await sharp(filePath)
+        .composite([{
+            input: Buffer.from(svgOverlay),
+            top: 0,
+            left: 0
+        }])
+        .toFile(highlightedPath);
+        
+    return highlightedPath;
+}
+
+async function extractText(filePath, mimeType, options = {}) {
+    const ocrLanguage = options.ocrLanguage || 'eng';
+
     if (mimeType === 'application/pdf') {
         const dataBuffer = fs.readFileSync(filePath);
         try {
@@ -15,17 +65,17 @@ async function extractText(filePath, mimeType) {
 
             // If extracted text is sufficient, return it
             if (text && text.trim().length >= 20) {
-                return text;
+                return { text: text, highlightedImageUrl: null };
             }
 
             // Otherwise, fall back to OCR via pdftoppm + Tesseract
             console.log('PDF text empty or too small — falling back to OCR...');
-            return await ocrPdfPages(filePath);
+            return await ocrPdfPages(filePath, ocrLanguage);
         } catch (error) {
             console.error('Error extracting PDF text, attempting OCR fallback:', error.message);
             // Try OCR as last resort
             try {
-                return await ocrPdfPages(filePath);
+                return await ocrPdfPages(filePath, ocrLanguage);
             } catch (ocrError) {
                 console.error('OCR fallback also failed:', ocrError.message);
                 throw new Error("Failed to extract text from PDF. The file may be corrupted.");
@@ -34,14 +84,55 @@ async function extractText(filePath, mimeType) {
 
     } else if (mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
         const result = await mammoth.extractRawText({ path: filePath });
-        return result.value;
+        return { text: result.value, highlightedImageUrl: null };
 
     } else if (mimeType.startsWith('image/')) {
-        const { data: { text: ocrText } } = await Tesseract.recognize(filePath, 'eng');
-        return ocrText;
+        console.log('Preprocessing image for OCR...');
+        const preprocessedPath = await preprocessImage(filePath);
+        
+        console.log(`Running OCR with language: ${ocrLanguage}...`);
+        const worker = await createWorker(ocrLanguage);
+        const { data } = await worker.recognize(preprocessedPath, {}, { blocks: true });
+        await worker.terminate();
+        
+        // Clean up preprocessed file if different from original
+        if (preprocessedPath !== filePath && fs.existsSync(preprocessedPath)) {
+            try {
+                fs.unlinkSync(preprocessedPath);
+            } catch (e) {
+                console.warn('Could not clean up preprocessed image:', e.message);
+            }
+        }
+        
+        // Extract words from blocks
+        let words = [];
+        if (data.blocks) {
+            for (const block of data.blocks) {
+                for (const para of block.paragraphs) {
+                    for (const line of para.lines) {
+                        for (const word of line.words) {
+                            words.push(word);
+                        }
+                    }
+                }
+            }
+        }
+        
+        let highlightedImageUrl = null;
+        if (words.length > 0) {
+            try {
+                const highlightedPath = await createHighlightedImage(filePath, words);
+                const fileName = path.basename(highlightedPath);
+                highlightedImageUrl = `/api/download/${fileName}`;
+            } catch (highlightError) {
+                console.warn('Failed to generate highlighted image:', highlightError.message);
+            }
+        }
+        
+        return { text: data.text, highlightedImageUrl };
 
     } else if (mimeType === 'text/plain') {
-        return fs.readFileSync(filePath, 'utf8');
+        return { text: fs.readFileSync(filePath, 'utf8'), highlightedImageUrl: null };
     } else {
         throw new Error('Unsupported file type: ' + mimeType);
     }
@@ -51,7 +142,7 @@ async function extractText(filePath, mimeType) {
  * Convert PDF pages to images using pdftoppm (from poppler),
  * then run Tesseract OCR on each page image.
  */
-async function ocrPdfPages(pdfPath) {
+async function ocrPdfPages(pdfPath, ocrLanguage) {
     const tmpDir = path.join(path.dirname(pdfPath), `ocr_tmp_${Date.now()}`);
     fs.mkdirSync(tmpDir, { recursive: true });
 
@@ -78,16 +169,24 @@ async function ocrPdfPages(pdfPath) {
 
         console.log(`Generated ${pageFiles.length} page image(s) for OCR...`);
 
+        const worker = await createWorker(ocrLanguage);
+        
         // Run OCR on each page
         let fullText = '';
         for (const pageFile of pageFiles) {
             const imagePath = path.join(tmpDir, pageFile);
-            console.log(`Running OCR on ${pageFile}...`);
-            const { data: { text } } = await Tesseract.recognize(imagePath, 'eng');
+            console.log(`Running OCR on ${pageFile} with language ${ocrLanguage}...`);
+            
+            // Apply preprocessing to PDF page images as well
+            const preprocessedPath = await preprocessImage(imagePath);
+            
+            const { data: { text } } = await worker.recognize(preprocessedPath);
             fullText += text + '\n';
         }
 
-        return fullText.trim();
+        await worker.terminate();
+
+        return { text: fullText.trim(), highlightedImageUrl: null };
     } finally {
         // Clean up temp directory
         try {

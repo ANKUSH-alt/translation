@@ -48,17 +48,24 @@ app.post('/api/translate', upload.single('file'), async (req, res) => {
             return res.status(400).json({ error: 'No file uploaded' });
         }
 
-        const { targetLanguage, outputFormat } = req.body;
+        const { targetLanguage, outputFormat, ocrLanguage } = req.body;
         const filePath = req.file.path;
         const mimeType = req.file.mimetype;
 
         // 1. Extract Text
         console.log(`Extracting text from ${req.file.originalname}...`);
-        const extractedText = await extractText(filePath, mimeType);
+        const { text: extractedText, highlightedImageUrl } = await extractText(filePath, mimeType, { 
+            ocrLanguage: ocrLanguage || 'eng' 
+        });
+
+        // 1.5. Clean OCR Text using Expert Multi-Pass Pipeline
+        const { cleanOcrText } = require('./services/ocrCleaning');
+        console.log(`Cleaning OCR Text from ${req.file.originalname}...`);
+        const cleanedText = await cleanOcrText(extractedText, ocrLanguage || 'eng');
 
         // 2. Translate Text
         console.log(`Translating to ${targetLanguage}...`);
-        const translatedText = await translateText(extractedText, targetLanguage);
+        const translatedText = await translateText(cleanedText, targetLanguage);
 
         // 3. Generate Translated File
         console.log(`Generating ${outputFormat} file...`);
@@ -73,7 +80,9 @@ app.post('/api/translate', upload.single('file'), async (req, res) => {
             message: 'Translation successful',
             downloadUrl: `/api/download/${fileName}`,
             fileName,
-            translatedText // Added for preview feature
+            translatedText, // Added for preview feature
+            extractedText,  // Return extracted text to frontend
+            highlightedImageUrl // Optional highlighted bounding box image URL
         });
 
     } catch (error) {
