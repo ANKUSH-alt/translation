@@ -70,7 +70,7 @@ LingoShift is optimized for cloud deployment:
 ---
 
 ## 🛡️ License
-Built by Ankush Gupta, Full Stack Developer and AI Developer
+Built by Ankush Gupta, Full Stack Developer and AI Developer. Deployed on Render and Vercel.
 
 ---
 *Built with ❤️ by the LingoShift Team*
